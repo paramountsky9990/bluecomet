@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import ImageUpload from "./components/ImageUpload";
 import CodePreview from "./components/CodePreview";
 import Preview from "./components/Preview";
@@ -13,7 +13,6 @@ import {
   FaMobile,
   FaUndo,
 } from "react-icons/fa";
-
 import { Switch } from "./components/ui/switch";
 import copy from "copy-to-clipboard";
 import toast from "react-hot-toast";
@@ -31,11 +30,13 @@ import { UrlInputSection } from "./components/UrlInputSection";
 import TermsOfServiceDialog from "./components/TermsOfServiceDialog";
 import html2canvas from "html2canvas";
 import { USER_CLOSE_WEB_SOCKET_CODE } from "./constants";
+import ColorThief from "colorthief";
 
 function App() {
   const [appState, setAppState] = useState<AppState>(AppState.INITIAL);
   const [generatedCode, setGeneratedCode] = useState<string>("");
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
+  const referenceImageRef = useRef<HTMLImageElement>(null);
   const [executionConsole, setExecutionConsole] = useState<string[]>([]);
   const [updateInstruction, setUpdateInstruction] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -65,6 +66,13 @@ function App() {
     const png = canvas.toDataURL("image/png");
     return png;
   };
+
+  useEffect(() => {
+    if (referenceImageRef.current) {
+      const colorThief = new ColorThief();
+      console.log(colorThief.getColor(referenceImageRef.current));
+    }
+  }, [referenceImageRef.current]);
 
   const downloadCode = () => {
     // Create a blob from the generated code
@@ -253,6 +261,7 @@ function App() {
                     })}
                   >
                     <img
+                      ref={referenceImageRef}
                       className="w-[340px] border border-gray-200 rounded-md"
                       src={referenceImages[0]}
                       alt="Reference"
