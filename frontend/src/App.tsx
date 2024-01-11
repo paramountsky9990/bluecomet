@@ -3,7 +3,7 @@ import ImageUpload from "./components/ImageUpload";
 import CodePreview from "./components/CodePreview";
 import Preview from "./components/Preview";
 import { generateCode } from "./generateCode";
-import Spinner from "./components/Spinner";
+import Spinner from "./components/custom-ui/Spinner";
 import classNames from "classnames";
 import {
   FaCode,
@@ -12,7 +12,6 @@ import {
   FaMobile,
   FaUndo,
 } from "react-icons/fa";
-
 import { Switch } from "./components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,16 +28,23 @@ import html2canvas from "html2canvas";
 import { USER_CLOSE_WEB_SOCKET_CODE } from "./constants";
 import CodeTab from "./components/CodeTab";
 import OutputSettingsSection from "./components/OutputSettingsSection";
+import { addEvent } from "./lib/analytics";
 import { History } from "./components/history/history_types";
 import HistoryDisplay from "./components/history/HistoryDisplay";
 import { extractHistoryTree } from "./components/history/utils";
 import toast from "react-hot-toast";
 import ImportCodeSection from "./components/ImportCodeSection";
+import { useAuth } from "@clerk/clerk-react";
+import { useStore } from "./store/store";
 import { Stack } from "./lib/stacks";
 
 const IS_OPENAI_DOWN = false;
 
-function App() {
+interface Props {
+  navbarComponent?: JSX.Element;
+}
+
+function App({ navbarComponent }: Props) {
   const [appState, setAppState] = useState<AppState>(AppState.INITIAL);
   const [generatedCode, setGeneratedCode] = useState<string>("");
 
@@ -46,6 +52,11 @@ function App() {
   const [executionConsole, setExecutionConsole] = useState<string[]>([]);
   const [updateInstruction, setUpdateInstruction] = useState("");
   const [isImportedFromCode, setIsImportedFromCode] = useState<boolean>(false);
+
+  // Relevant for hosted version only
+  // TODO: Move to AppContainer
+  const { getToken } = useAuth();
+  const subscriberTier = useStore((state) => state.subscriberTier);
 
   // Settings
   const [settings, setSettings] = usePersistedState<Settings>(
@@ -57,7 +68,7 @@ function App() {
       editorTheme: EditorTheme.COBALT,
       generatedCodeConfig: Stack.HTML_TAILWIND,
       // Only relevant for hosted version
-      isTermOfServiceAccepted: false,
+      isTermOfServiceAccepted: true,
       accessCode: null,
     },
     "setting"
@@ -99,6 +110,8 @@ function App() {
   };
 
   const downloadCode = () => {
+    addEvent("Download");
+
     // Create a blob from the generated code
     const blob = new Blob([generatedCode], { type: "text/html" });
     const url = URL.createObjectURL(blob);
@@ -144,7 +157,7 @@ function App() {
     }
   };
 
-  function doGenerateCode(
+  async function doGenerateCode(
     params: CodeGenerationParams,
     parentVersion: number | null
   ) {
@@ -152,7 +165,12 @@ function App() {
     setAppState(AppState.CODING);
 
     // Merge settings with params
-    const updatedParams = { ...params, ...settings };
+    const authToken = await getToken();
+    const updatedParams = {
+      ...params,
+      ...settings,
+      authToken: authToken || undefined,
+    };
 
     generateCode(
       wsRef,
@@ -179,6 +197,7 @@ function App() {
               toast.error(
                 "No parent version set. Contact support or open a Github issue."
               );
+              addEvent("ParentVersionNull");
               return prev;
             }
 
@@ -212,13 +231,13 @@ function App() {
   }
 
   // Initial version creation
-  function doCreate(referenceImages: string[]) {
+  async function doCreate(referenceImages: string[]) {
     // Reset any existing state
     reset();
 
     setReferenceImages(referenceImages);
     if (referenceImages.length > 0) {
-      doGenerateCode(
+      await doGenerateCode(
         {
           generationType: "create",
           image: referenceImages[0],
@@ -234,6 +253,7 @@ function App() {
       toast.error(
         "No current version set. Contact support or open a Github issue."
       );
+      addEvent("CurrentVersionNull");
       return;
     }
 
@@ -241,6 +261,7 @@ function App() {
     try {
       historyTree = extractHistoryTree(appHistory, currentVersion);
     } catch {
+      addEvent("HistoryTreeFailed");
       toast.error(
         "Version history is invalid. This shouldn't happen. Please contact support or open a Github issue."
       );
@@ -251,7 +272,7 @@ function App() {
 
     if (shouldIncludeResultImage) {
       const resultImage = await takeScreenshot();
-      doGenerateCode(
+      await doGenerateCode(
         {
           generationType: "update",
           image: referenceImages[0],
@@ -262,7 +283,7 @@ function App() {
         currentVersion
       );
     } else {
-      doGenerateCode(
+      await doGenerateCode(
         {
           generationType: "update",
           image: referenceImages[0],
@@ -315,7 +336,7 @@ function App() {
       {IS_RUNNING_ON_CLOUD && <PicoBadge settings={settings} />}
       {IS_RUNNING_ON_CLOUD && (
         <TermsOfServiceDialog
-          open={!settings.isTermOfServiceAccepted}
+          open={false}
           onOpenChange={handleTermDialogOpenChange}
         />
       )}
@@ -335,9 +356,8 @@ function App() {
           />
 
           {IS_RUNNING_ON_CLOUD &&
-            !(settings.openAiApiKey || settings.accessCode) && (
-              <OnboardingNote />
-            )}
+            !(settings.openAiApiKey || settings.accessCode) &&
+            subscriberTier === "free" && <OnboardingNote />}
 
           {IS_OPENAI_DOWN && (
             <div className="bg-black text-white dark:bg-white dark:text-black p-3 rounded">
@@ -388,7 +408,7 @@ function App() {
                     </div>
                     <Button
                       onClick={doUpdate}
-                      className="dark:text-white dark:bg-gray-700"
+                      className="dark:text-white dark:bg-gray-700 plausible-event-name=Edit"
                     >
                       Update
                     </Button>
@@ -468,6 +488,8 @@ function App() {
       </div>
 
       <main className="py-2 lg:pl-96">
+        {!!navbarComponent && navbarComponent}
+
         {appState === AppState.INITIAL && (
           <div className="flex flex-col justify-center items-center gap-y-10">
             <ImageUpload setReferenceImages={doCreate} />

@@ -6,6 +6,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "./ui/select";
+import { addEvent } from "../lib/analytics";
 import { Badge } from "./ui/badge";
 import { Stack, STACK_DESCRIPTIONS } from "../lib/stacks";
 
@@ -43,7 +44,10 @@ function OutputSettingsSection({
         <span>{label}</span>
         <Select
           value={stack}
-          onValueChange={(value: string) => setStack(value as Stack)}
+          onValueChange={(value: string) => {
+            addEvent("OutputSettings", { stack: value });
+            setStack(value as Stack);
+          }}
           disabled={shouldDisableUpdates}
         >
           <SelectTrigger className="col-span-2" id="output-settings-js">
